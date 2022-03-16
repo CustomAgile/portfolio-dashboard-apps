@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Printing Portfolio Tree</title>
+    <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Wed Apr 08 2015 15:49:49 GMT-0700 (PDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Wed Apr 08 2015 15:49:49 GMT-0700 (PDT)";
+        var CHECKSUM = 6966217226;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define( 'Rally.technicalservices.gridboard.Gridboard', {
+    extend: 'Rally.ui.gridboard.GridBoard',
+    alias: 'widget.tsgridboard',
+    cls: 'rui-gridboard',
+    items: [
+        {
+            itemId: 'header',
+            xtype: 'rallyleftright',
+            padding: '4 10',
+            overflowX: 'hidden'
+        }
+    ]
+});
+Ext.define('Rally.technicalservices.window.PrintCards',{    extend: 'Ext.Window',
+    logger: new Rally.technicalservices.Logger(),
+    truncateText: '...',
+    config: {
+        title: 'print...',
+        records: null,
+        styleSheetTitle: "printCards", 
+        /**
+         *  Array of the following:
+         *  dataIndex
+         *  maxLength (default 0)
+         *  cls (defaults are: card-title, content, 
+         */
+        displayFields: null 
+    },
+    constructor: function(config){
+        this.initConfig(config);
+    },
+    show: function(){
+        var options = "toolbar=1,menubar=1,scrollbars=yes,scrolling=yes,resizable=yes,width=1000,height=500";
+        var win = window.open('',this.title);
+        
+        var html = this._buildCardsHTML();
+        
+        win.document.write('<html><head><title>' + this.title + '</title>');
+        win.document.write('<style>');
+        win.document.write(this._getStyleSheet(this.styleSheetTitle));
+        win.document.write('</style>');
+        win.document.write('</head><body class="landscape">');
+        win.document.write(html);
+        win.document.write('</body></html>');
+        
+        win.document.close();
+        
+        win.print();
+        win.close();
+    },
+    _buildCardsHTML: function() {
+
+        var html = '';
+        var total_cards = this.records.length; 
+        var card_num = 0; 
+        
+        Ext.each(this.records, function(record){
+            
+            var value_html = '';
+            //Todo organize by content or header...
+            Ext.each(this.displayFields, function(df){
+                var value = record.get(df.dataIndex);
+                if ( df.renderer ) {
+                    value = df.renderer(value,null,record);
+                }
+                df.maxLenth = df.maxLength || 0;
+                if (df.maxLength > 0 && value.length > df.maxLength){
+                    value = value.substring(0,df.maxLength);
+                    value = value + this.truncateText;
+                }
+                value_html += Ext.String.format('<div class="{0}">{1}</div>',df.cls,value);
+            }, this);
+            
+            
+            card_num ++; 
+            var artifact_classes = "artifact";
+            // for margin setting left vs right
+
+            if ((card_num) % 2 === 0 ) {
+                artifact_classes += " artifact_right";
+            } else {
+                artifact_classes += " artifact_left";
+            }
+            // for margin setting top vs. bottom
+            if ( ((card_num) % 4 === 0) || ((card_num) % 4 == 3 ) ){
+                artifact_classes += " artifact_bottom";
+            } else {
+                artifact_classes += " artifact_top";
+            }
+            html += Ext.String.format('<div class="{0}">{1}</div>', artifact_classes, value_html);
+            
+            if ((card_num) % 4 === 0) {
+                html += '<div class="pb"></div>';
+            } else if (card_num === total_cards - 1) {
+                html += '<div class="cb">&nbsp;</div>';
+            }
+        },this);
+        return html;  
+    },
+    _getStyleSheet: function(styleSheetTitle) {
+        this.logger.log('getStyleSheet');
+        var styleSheet;
+        var docs = Ext.getDoc(); 
+        var elems = docs.query('style');
+        for (var i=0; i< elems.length; i++){
+            if (elems[i].title == styleSheetTitle){
+                styleSheet = elems[i];
+            }
+        }
+        return styleSheet.innerHTML;
+    }
+});
+Ext.define('CustomApp', {
+    extend: 'Rally.app.GridBoardApp',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    defaults: { margin: 10 },
+    columnNames: ['Name','Owner','Iteration','PlanEstimate','c_MoSCoWPriority','Ready','c_PrimaryDevTeam','Project'],
+    modelNames: ['PortfolioItem/Feature'],
+    statePrefix: 'ts-pi-temp',
+    gridStoreConfig: {
+        fetch: ['Feature']
+    },
+    
+    getGridBoardPlugins: function() {
+        return  [
+            {
+                ptype: 'rallygridboardcustomfiltercontrol',
+                filterControlConfig: {
+                    modelNames: ['portfolioitem/feature'],
+                    stateful: true,
+                    stateId: this.context.getScopedStateId('ts-printer-board')
+                },
+                showOwnerFilter: true,
+                ownerFilterControlConfig: {
+                    stateful: true,
+                    stateId: this.context.getScopedStateId('ts-printer-board')
+                }
+            },
+            {
+                ptype: 'rallygridboardactionsmenu',
+                menuItems: [
+                    {
+                        text: 'Print Selected Stories...',
+                        handler: function() {
+                            var gridorboard = this.down('rallygridboard').getGridOrBoard();
+                            this._getSelectedStories( gridorboard ).then({
+                                scope: this,
+                                success: function(stories){
+                                    this._openPrintCards(stories);
+                                },
+                                failure: function(msg) {
+                                    alert(msg);
+                                }
+                            });
+                            
+                        },
+                        scope: this
+                    }
+                ],
+                buttonConfig: {
+                    iconCls: 'icon-export'
+                }
+            }
+        ]
+    },
+    _getSelectedStories: function( gridorboard ) {
+        var deferred = Ext.create('Deft.Deferred');
+
+        var selected_items = gridorboard.getSelModel().getSelection();
+        
+        var promises = [];
+        var stories = [];
+        
+        Ext.Array.each(selected_items, function(selected_item){
+            var type = selected_item.get('_type');
+            if ( type == 'hierarchicalrequirement' ) {
+                stories.push(selected_item);
+            } else {
+                promises.push(this._getChildItems(selected_item));
+            }
+        },this);
+                
+        if (promises.length > 0) {
+        
+            Deft.Promise.all(promises).then({
+                scope: this,
+                success: function(child_stories){
+                    var fids_returned = [];
+                    var stories_to_return = [];
+                    
+                    Ext.Array.each(stories,function(story){
+                        fids_returned.push(story.get('FormattedID'));
+                        stories_to_return.push(story);
+                    });
+                    
+                    Ext.Array.each(Ext.Array.flatten(child_stories),function(story){
+                        if ( Ext.Array.indexOf(fids_returned, story.get('FormattedID')) == -1 ) {
+                            fids_returned.push(story.get('FormattedID'));
+                            stories_to_return.push(story);
+                        }
+                    });
+                    
+                    deferred.resolve(stories_to_return);
+                    
+                },
+                failure: function(msg) {
+                    deferred.reject(msg);
+                }
+            });
+            
+        } else {
+            deferred.resolve(stories);
+        }
+        return deferred.promise;
+    },
+    _getChildItems: function(selected_item){
+        var deferred = Ext.create('Deft.Deferred');
+        Ext.create('Rally.data.wsapi.Store', {
+            model: 'hierarchicalrequirement',
+            autoLoad: true,
+            context: { project: null },
+            filters: [{ property:'PortfolioItem.ObjectID',value:selected_item.get('ObjectID')}],
+            fetch:  ['c_MoSCoWPriority','Name','ObjectID','Feature', 'PlanEstimate',
+                    'PortfolioItem','FormattedID','Project',
+                    'Iteration','c_PrimaryDevTeam'],
+            listeners: {
+                load: function(store, records, successful) {
+                    if (successful){
+                        deferred.resolve(records);
+                    } else {
+                        deferred.reject('Failed to load children for ' + selected_item.get('FormattedID'));
+                    }
+                }
+            }
+        });
+        return deferred.promise;
+    },
+    
+    _openPrintCards: function(records){
+        
+        var fields =[{
+            dataIndex: 'FormattedID',
+            cls: 'cardUpperLeft'
+        },
+        {
+            dataIndex: 'PlanEstimate',
+            cls: 'cardUpperInnerRight',
+            renderer: function(value,meta_data,record){
+                if ( ! value ) { value = ""; }
+                return value;
+            }
+        },
+        {
+            dataIndex: 'c_MoSCoWPriority',
+            cls: 'cardUpperInnerLeft',
+            renderer: function(value,meta_data,record){
+                if ( ! value ) { value = ""; }
+                return value;
+            }
+        },
+        {
+            dataIndex: 'Iteration',
+            cls: 'cardUpperRight',
+            renderer: function(value,meta_data,record){
+                var iteration = record.get('Iteration');
+                var iteration_name = " ";
+                if ( iteration ) {
+                    iteration_name = Ext.util.Format.substr(iteration.Name,0,4);
+                }
+                
+                return iteration_name;
+            }
+        },
+        {
+            dataIndex: 'Project',
+            cls: 'cardLowerLeft',
+            renderer: function(value,meta_data,record){
+                if ( !value ) {
+                    return "";
+                }
+                
+                var feature_string = record.get('Feature').FormattedID + ":  " + record.get('Feature').Name;
+                //var project_string = record.get('Feature').c_PrimaryDevTeam;
+                var project_string = record.get('Project').Name;
+                var feature_project_string = record.get('Feature').Project.Name;
+                
+                return [feature_string,project_string,feature_project_string].join('<br/>');
+            }
+        },
+        {
+            dataIndex: 'Name',
+            maxLength: 100,
+            cls: 'cardTitle'
+        }];
+        
+        var win = Ext.create('Rally.technicalservices.window.PrintCards',{
+            records: records,
+            displayFields: fields,
+            currentDocument: Ext.getDoc()
+        });
+        win.show();
+    },
+    
+    _getGridBoardContext: function () {
+        return this.isWorkspaceScoped ? this.getContext().clone({ project: null }) : this.getContext();
+    },
+    
+    _getTreeGridStore: function () {
+        var me = this;
+        
+        return Ext.create('Rally.data.wsapi.TreeStoreBuilder').build(_.merge({
+            autoLoad: false,
+            childPageSizeEnabled: true,
+            context: me._getGridBoardContext().getDataContext(),
+            enableHierarchy: true,
+            fetch: _.union(['Workspace','Feature','Ready'], me.columnNames),
+            models: _.clone(me.models),
+            pageSize: 25,
+            remoteSort: true,
+            root: {expanded: true}
+        }, this.getGridStoreConfig())).then({
+            success: function (treeGridStore) {
+                treeGridStore.on('load', me.publishComponentReady, me, { single: true });
+                return { gridStore: treeGridStore };
+            },
+            scope: me
+        });
+    }
+});
+
+            
+               Rally.launchApp('CustomApp', {
+                   name: 'Printing Portfolio Tree'
+               });
+        });
+    </script>
+    
+    <style type="text/css" title="printCards">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+<style type="text/css" title="printCards">
+            /* PLEASE LEAVE THIS STYLESHEET INLINE SINCE TITLE IS NECESSARY */
+        @media print {
+            #interface {
+                display: none;
+            }
+
+            .pb {
+                page-break-after: always;
+                clear: both;
+            }
+        }
+
+        .pb {
+                page-break-after: always;
+                clear: both;
+            }
+        #buttonDiv,
+        #iterationDropdown {
+            display: inline;
+        }
+
+        #interface, #printSection {
+            margin: 20px;
+        }
+
+        html {
+            background-color: #fff;
+            color: #000;
+            font: 14pt / 1.26 Arial, Helvetica, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #fff;
+            margin: 0;
+            padding: 0;
+        }
+
+        .cb {
+            clear: both;
+        }
+
+        .artifact {
+            background-color: #fff;
+            border: 2px solid #000;
+            float: left;
+            height: 3.2in;
+            position: relative;
+            overflow: hidden;
+            width: 4.3in;
+        }
+        
+        .artifact_left {
+            margin-right: 0.4in;
+        }
+        .artifact_right {
+            margin-left: 0.3in;
+        }
+        .artifact_top {
+            margin-bottom: 0.3in;
+        }
+        .artifact_bottom {
+            margin-top: 0.3in;
+        }
+
+        .header {
+            border: 1px;
+            border-bottom-style: solid;
+            display: table-cell;
+            height: 40px;
+            vertical-align: middle;
+            width: 4.3in;
+        }
+
+        .cardTitle {
+            font: bold 24px Genova, sans-serif;
+            padding-top: 3em;
+            text-align: center;
+        }
+
+        .description {
+            float: left;
+            font: 12pt Georgia, sans-serif;
+            margin: 15em auto 0 auto;
+            padding-left: 1.0em;
+            padding-right: 1.0em;
+            overflow-y: hidden;
+            width: 100%;
+            word-wrap: break-word;
+        }
+
+        .cardUpperRight {
+            text-align: right;
+            font: bold 20px Arial, Helvetica, sans-serif;
+            top: 0.5em;
+            right: 0.5em;
+            position: absolute;
+        }
+
+       .cardUpperInnerLeft {
+            text-align: center;
+            font: bold 20px Arial, Helvetica, sans-serif;
+            top: 0.5em;
+            left: 4.0em;
+            width: 6.0em;
+            position: absolute;
+        }
+        .cardUpperInnerRight {
+            text-align: center;
+            font: bold 20px Arial, Helvetica, sans-serif;
+            top: 0.5em;
+            right: 4.0em;
+            width: 6.0em;
+            position: absolute;
+        }
+        .cardUpperLeft {
+            position: absolute;
+            font: bold 20px Arial, Helvetica, sans-serif;
+            top: 0.5em;
+            left: 0.5em;
+        }
+
+        .cardLowerLeft {
+            bottom: 0.5em;
+            left: 0.5em;
+            position: absolute;
+        }
+        
+        .cardLowerRight {
+            bottom: 0.5em;
+            position: absolute;
+            right: 0.5em;
+        }
+
+        .cardUpperCenter {
+            font: bold 20px Arial, Helvetica, sans-serif;
+            text-align: center;
+            top: 0.5em;
+            position: absolute;
+            right: 0.5in;
+            display: inline;
+            width: 3in;
+        }
+        
+        .content {
+            height: 2.4in;
+            overflow: hidden;
+            width: 4.3in;
+        }
+
+    </style>
+    </style>
+
+</head>
+<body></body>
+</html>
